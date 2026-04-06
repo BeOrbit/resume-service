@@ -560,7 +560,7 @@
     const name = document.getElementById('fullName').value.trim();
     const email = document.getElementById('email').value.trim();
     const phone = document.getElementById('phone').value.trim();
-    const location = document.getElementById('location').value.trim();
+    const userLocation = document.getElementById('location').value.trim();
     const links = document.getElementById('links').value.trim();
     const education = document.getElementById('education').value.trim();
     const experience = document.getElementById('experience').value.trim();
@@ -583,7 +583,7 @@
 
     if (!sessionId) {
       // Not paid yet — save form data and redirect to Stripe
-      const formData = { name, email, phone, location, links, education, experience, skills, jobTitle, company, jobDesc, tone, uploadedResumeText, layout: selectedLayout, photoDataUrl };
+      const formData = { name, email, phone, location: userLocation, links, education, experience, skills, jobTitle, company, jobDesc, tone, uploadedResumeText, layout: selectedLayout, photoDataUrl };
       localStorage.setItem('resumeFormData', JSON.stringify(formData));
 
       showLoading(true);
@@ -615,7 +615,7 @@
 
     // Payment confirmed — restore form data if available
     const saved = localStorage.getItem('resumeFormData');
-    let formVals = { name, email, phone, location, links, education, experience, skills, jobTitle, company, jobDesc, tone, uploadedResumeText, layout: selectedLayout };
+    let formVals = { name, email, phone, location: userLocation, links, education, experience, skills, jobTitle, company, jobDesc, tone, uploadedResumeText, layout: selectedLayout };
     if (saved) {
       try {
         formVals = JSON.parse(saved);
@@ -722,18 +722,6 @@ JSON structure to return:
     }
   }
 
-    const name = document.getElementById('fullName').value.trim();
-    const email = document.getElementById('email').value.trim();
-    const phone = document.getElementById('phone').value.trim();
-    const location = document.getElementById('location').value.trim();
-    const links = document.getElementById('links').value.trim();
-    const education = document.getElementById('education').value.trim();
-    const experience = document.getElementById('experience').value.trim();
-    const skills = document.getElementById('skills').value.trim();
-    const jobTitle = document.getElementById('jobTitle').value.trim();
-    const company = document.getElementById('company').value.trim();
-    const jobDesc = document.getElementById('jobDesc').value.trim();
-    const tone = document.getElementById('tone').value;
 
   function buildResumePreviewText(d) {
     let t = `${d.name}\n${[d.email, d.phone, d.location, d.links].filter(Boolean).join(' | ')}\n\n`;
