@@ -472,6 +472,36 @@
     if (window.pdfjsLib) {
       pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     }
+
+    // Auto-trigger generation if returning from Stripe payment
+    const urlParams = new URLSearchParams(window.location.search);
+    const sessionId = urlParams.get('session_id');
+    if (sessionId) {
+      // Restore saved form data
+      const saved = localStorage.getItem('resumeFormData');
+      if (saved) {
+        try {
+          const formVals = JSON.parse(saved);
+          // Restore fields
+          if (formVals.name) document.getElementById('fullName').value = formVals.name;
+          if (formVals.email) document.getElementById('email').value = formVals.email;
+          if (formVals.phone) document.getElementById('phone').value = formVals.phone;
+          if (formVals.userLocation) document.getElementById('location').value = formVals.userLocation;
+          if (formVals.links) document.getElementById('links').value = formVals.links;
+          if (formVals.education) document.getElementById('education').value = formVals.education;
+          if (formVals.experience) document.getElementById('experience').value = formVals.experience;
+          if (formVals.skills) document.getElementById('skills').value = formVals.skills;
+          if (formVals.jobTitle) document.getElementById('jobTitle').value = formVals.jobTitle;
+          if (formVals.company) document.getElementById('company').value = formVals.company;
+          if (formVals.jobDesc) document.getElementById('jobDesc').value = formVals.jobDesc;
+          if (formVals.uploadedResumeText) document.getElementById('pastedResume').value = formVals.uploadedResumeText;
+          if (formVals.layout) selectedLayout = formVals.layout;
+          if (formVals.photoDataUrl) photoDataUrl = formVals.photoDataUrl;
+        } catch(e) {}
+      }
+      // Auto generate
+      generate();
+    }
   });
 
   async function handleResumeFile(e) {
@@ -583,7 +613,7 @@
 
     if (!sessionId) {
       // Not paid yet — save form data and redirect to Stripe
-      const formData = { name, email, phone, location: userLocation, links, education, experience, skills, jobTitle, company, jobDesc, tone, uploadedResumeText, layout: selectedLayout, photoDataUrl };
+      const formData = { name, email, phone, userLocation, links, education, experience, skills, jobTitle, company, jobDesc, tone, uploadedResumeText, layout: selectedLayout, photoDataUrl };
       localStorage.setItem('resumeFormData', JSON.stringify(formData));
 
       showLoading(true);
