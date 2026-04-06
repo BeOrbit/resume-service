@@ -245,10 +245,7 @@
     <div class="value-item">🔒 No account needed</div>
   </div>
 
-  <div class="api-banner">
-    <span class="api-label">API KEY</span>
-    <input type="password" id="apiKey" placeholder="sk-ant-api03-..." autocomplete="off" />
-  </div>
+  <!-- No API key needed - handled by backend -->
 
   <div id="formSection">
     <!-- UPLOAD -->
@@ -289,10 +286,10 @@
       </div>
 
       <div class="grid2" style="margin-top:16px">
-        <div class="field"><label>Full Name</label><input type="text" id="fullName" placeholder="Javon Mentore" /></div>
-        <div class="field"><label>Email</label><input type="email" id="email" placeholder="jmentore@email.com" /></div>
-        <div class="field"><label>Phone</label><input type="tel" id="phone" placeholder="(917) 555-0000" /></div>
-        <div class="field"><label>Location</label><input type="text" id="location" placeholder="Brooklyn, NY" /></div>
+        <div class="field"><label>Full Name</label><input type="text" id="fullName" placeholder="John Smith" /></div>
+        <div class="field"><label>Email</label><input type="email" id="email" placeholder="john@email.com" /></div>
+        <div class="field"><label>Phone</label><input type="tel" id="phone" placeholder="(555) 000-0000" /></div>
+        <div class="field"><label>Location</label><input type="text" id="location" placeholder="New York, NY" /></div>
       </div>
       <div class="field" style="margin-top:14px"><label>LinkedIn / Portfolio (optional)</label><input type="text" id="links" placeholder="linkedin.com/in/yourname" /></div>
     </div>
@@ -300,9 +297,9 @@
     <!-- BACKGROUND -->
     <div class="card">
       <div class="card-title"><div class="badge">2</div> Background</div>
-      <div class="field"><label>Education</label><input type="text" id="education" placeholder="B.S. Cybersecurity & Digital Forensics — Stevenson University, 2028" /></div>
+      <div class="field"><label>Education</label><input type="text" id="education" placeholder="B.S. Computer Science — State University, 2025" /></div>
       <div class="field"><label>Work Experience & Projects</label><textarea id="experience" rows="5" placeholder="Describe your jobs, internships, and projects. More detail = better results."></textarea></div>
-      <div class="field"><label>Skills</label><input type="text" id="skills" placeholder="Python, digital forensics, networking, Microsoft Access, content creation..." /></div>
+      <div class="field"><label>Skills</label><input type="text" id="skills" placeholder="Microsoft Office, customer service, teamwork..." /></div>
     </div>
 
     <!-- TARGET JOB -->
@@ -411,7 +408,7 @@
 
   <div class="loading" id="loading">
     <div class="spinner"></div>
-    <p>Crafting your resume...</p>
+    <p id="loadingMsg">Crafting your resume...</p>
   </div>
 
   <div class="results" id="results">
@@ -560,9 +557,6 @@
   }
 
   async function generate() {
-    const apiKey = document.getElementById('apiKey').value.trim();
-    if (!apiKey) return showError('Please enter your Anthropic API key at the top.');
-
     const name = document.getElementById('fullName').value.trim();
     const email = document.getElementById('email').value.trim();
     const phone = document.getElementById('phone').value.trim();
@@ -577,32 +571,84 @@
     const tone = document.getElementById('tone').value;
     const uploadedResumeText = document.getElementById('pastedResume').value.trim();
 
-    if (!jobTitle && !name && !experience && !uploadedResumeText) return showError('Please fill in your info or upload a resume.');
+    if (!jobTitle && !name && !experience && !uploadedResumeText) {
+      return showError('Please fill in your info or upload a resume.');
+    }
 
     hideError();
-    showLoading(true);
 
-    const uploadNote = uploadedResumeText ? `\nEXISTING RESUME TEXT:\n${uploadedResumeText.substring(0, 3500)}\n` : '';
-    const hasUpload = !!uploadedResumeText;
+    // Check if already paid (coming back from Stripe)
+    const urlParams = new URLSearchParams(window.location.search);
+    const sessionId = urlParams.get('session_id');
+
+    if (!sessionId) {
+      // Not paid yet — save form data and redirect to Stripe
+      const formData = { name, email, phone, location, links, education, experience, skills, jobTitle, company, jobDesc, tone, uploadedResumeText, layout: selectedLayout, photoDataUrl };
+      localStorage.setItem('resumeFormData', JSON.stringify(formData));
+
+      showLoading(true);
+      document.getElementById('loadingMsg').textContent = 'Redirecting to payment...';
+
+      const res = await fetch('/api/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        showLoading(false);
+        showError('Payment error: ' + (data.error || 'Unknown error'));
+      }
+      return;
+    }
+
+    // Has session_id — verify payment then generate
+    showLoading(true);
+    document.getElementById('loadingMsg').textContent = 'Verifying payment...';
+
+    const verifyRes = await fetch('/api/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: sessionId }) });
+    const verifyData = await verifyRes.json();
+
+    if (!verifyData.paid) {
+      showLoading(false);
+      showError('Payment not confirmed. Please try again.');
+      return;
+    }
+
+    // Payment confirmed — restore form data if available
+    const saved = localStorage.getItem('resumeFormData');
+    let formVals = { name, email, phone, location, links, education, experience, skills, jobTitle, company, jobDesc, tone, uploadedResumeText, layout: selectedLayout };
+    if (saved) {
+      try {
+        formVals = JSON.parse(saved);
+        selectedLayout = formVals.layout || selectedLayout;
+        if (formVals.photoDataUrl) photoDataUrl = formVals.photoDataUrl;
+        localStorage.removeItem('resumeFormData');
+      } catch(e) {}
+    }
+
+    document.getElementById('loadingMsg').textContent = 'Crafting your resume...';
+    await generateResume(formVals);
+  }
+
+  async function generateResume(v) {
+    const uploadNote = v.uploadedResumeText ? `\nEXISTING RESUME TEXT:\n${v.uploadedResumeText.substring(0, 3500)}\n` : '';
+    const hasUpload = !!v.uploadedResumeText;
 
     const prompt = `You are a resume writer. Return ONLY a valid JSON object — no markdown, no backticks, no explanation, just raw JSON.
 
-${hasUpload
-  ? 'Use the existing resume text below as the primary source. The candidate\'s real full name is the very first line of the resume — never use a company name as the name. Include ALL jobs listed.'
-  : 'Use the candidate information provided to create a professional resume.'}
+${hasUpload ? 'Use the existing resume text below as the primary source. The candidate\'s real full name is the very first line of the resume — never use a company name as the name. Include ALL jobs listed.' : 'Use the candidate information provided to create a professional resume.'}
 
 CANDIDATE INFO:
-- Name: ${name || 'Not provided'}
-- Email: ${email || 'Not provided'}
-- Phone: ${phone || 'Not provided'}
-- Location: ${location || 'Not provided'}
-- Education: ${education || 'Not provided'}
-- Experience: ${experience || 'Not provided'}
-- Skills: ${skills || 'Not provided'}
+- Name: ${v.name || 'Not provided'}
+- Email: ${v.email || 'Not provided'}
+- Phone: ${v.phone || 'Not provided'}
+- Location: ${v.location || 'Not provided'}
+- Education: ${v.education || 'Not provided'}
+- Experience: ${v.experience || 'Not provided'}
+- Skills: ${v.skills || 'Not provided'}
 ${uploadNote}
-TARGET ROLE: ${jobTitle || 'General position'} at ${company || 'a company'}
-Job Description: ${jobDesc ? jobDesc.substring(0,300) : 'Not provided'}
-Tone: ${tone}
+TARGET ROLE: ${v.jobTitle || 'General position'} at ${v.company || 'a company'}
+Job Description: ${v.jobDesc ? v.jobDesc.substring(0,300) : 'Not provided'}
+Tone: ${v.tone}
 
 JSON structure to return:
 {
@@ -618,45 +664,29 @@ JSON structure to return:
   "education": [{"degree":"Degree Name","school":"School Name","dates":"YYYY","note":""}],
   "skills": ["skill1","skill2","skill3"],
   "achievements": ["achievement1","achievement2"],
-  "coverLetter": "3 short paragraphs under 180 words addressed to ${company || 'the hiring team'}"
+  "coverLetter": "3 short paragraphs under 180 words addressed to ${v.company || 'the hiring team'}"
 }`;
 
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const response = await fetch('/api/generate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 4000,
-          messages: [{ role: 'user', content: prompt }]
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt })
       });
 
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error?.message || 'API request failed.');
+      if (!response.ok) throw new Error(result.error || 'Generation failed');
 
-      let raw = result.content[0].text.trim();
-      // Strip markdown fences
+      let raw = result.content.trim();
       raw = raw.replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/```$/,'').trim();
-      // Strip anything before the first {
       const firstBrace = raw.indexOf('{');
       const lastBrace = raw.lastIndexOf('}');
-      if (firstBrace !== -1 && lastBrace !== -1) {
-        raw = raw.substring(firstBrace, lastBrace + 1);
-      }
+      if (firstBrace !== -1 && lastBrace !== -1) raw = raw.substring(firstBrace, lastBrace + 1);
 
       let data;
-      try {
-        data = JSON.parse(raw);
-      } catch(e) {
-        // Try to fix common JSON issues - truncated responses
+      try { data = JSON.parse(raw); }
+      catch(e) {
         try {
-          // Close any open arrays/objects
           let fixed = raw;
           const opens = (fixed.match(/\[/g)||[]).length - (fixed.match(/\]/g)||[]).length;
           const openBraces = (fixed.match(/\{/g)||[]).length - (fixed.match(/\}/g)||[]).length;
@@ -664,21 +694,17 @@ JSON structure to return:
           for(let i=0;i<openBraces;i++) fixed += '}';
           data = JSON.parse(fixed);
         } catch(e2) {
-          console.error('Raw response:', raw.substring(0, 500));
-          throw new Error('Resume data could not be parsed. This usually means the response was cut off. Try again — it usually works on the second attempt.');
+          throw new Error('Resume data could not be parsed. Please try again.');
         }
       }
 
-      // Store for PDF use
       window._resumeData = data;
       console.log('Jobs in JSON:', data.experience?.length, data.experience?.map(j=>j.company));
 
-      // Show preview text in result panels
       const resumePreview = buildResumePreviewText(data);
       document.getElementById('resumeContent').textContent = resumePreview;
       document.getElementById('coverContent').textContent = data.coverLetter || '';
 
-      // Show photo if uploaded
       const photoEl = document.getElementById('resultPhoto');
       if (photoDataUrl) { photoEl.src = photoDataUrl; photoEl.style.display = 'block'; }
       else { photoEl.style.display = 'none'; }
@@ -687,11 +713,27 @@ JSON structure to return:
       document.getElementById('formSection').style.display = 'none';
       document.getElementById('results').classList.add('active');
 
+      // Clean URL
+      window.history.replaceState({}, document.title, '/');
+
     } catch (err) {
       showLoading(false);
       showError('Error: ' + err.message);
     }
   }
+
+    const name = document.getElementById('fullName').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const phone = document.getElementById('phone').value.trim();
+    const location = document.getElementById('location').value.trim();
+    const links = document.getElementById('links').value.trim();
+    const education = document.getElementById('education').value.trim();
+    const experience = document.getElementById('experience').value.trim();
+    const skills = document.getElementById('skills').value.trim();
+    const jobTitle = document.getElementById('jobTitle').value.trim();
+    const company = document.getElementById('company').value.trim();
+    const jobDesc = document.getElementById('jobDesc').value.trim();
+    const tone = document.getElementById('tone').value;
 
   function buildResumePreviewText(d) {
     let t = `${d.name}\n${[d.email, d.phone, d.location, d.links].filter(Boolean).join(' | ')}\n\n`;
